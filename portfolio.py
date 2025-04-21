@@ -54,4 +54,4 @@ def parse_positions(roster_df, total_capital, position_map, ticker_replacements)
         ticker_to_player[ticker] = player
         ticker_to_direction[ticker] = direction
 
-    return shares_held, all_tickers, ticker_to_player, ticker_to_direction
+    return shares_held, all_tickers, ticker_to_player, ticker_to_direction, positions
