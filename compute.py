@@ -17,17 +17,20 @@ def compute_all_returns(shares_held, df_prices, ticker_metadata, purchase_date, 
                 if df.empty or purchase_date not in df.index:
                     continue
 
-                open_price = df.loc[purchase_date]["Open"]
+                adj_close_series = df["Adj Close"]
+                open_price = adj_close_series.loc[purchase_date]
                 close_idx = -2 if return_basis == "Previous Close" and len(df) >= 2 else -1
-                close_price = df.iloc[close_idx]["Close"]
+                close_price = adj_close_series.iloc[close_idx]
 
-                df_return = ((df["Close"] - open_price) / open_price * 100) * direction
+                # Time series return
+                df_return = ((adj_close_series - open_price) / open_price * 100) * direction
                 df_return.name = player
                 series_list.append(df_return)
 
+                # Store return details
                 shares = capital / open_price
                 shares_held[player][ticker] = shares * direction
-                prices_by_date[ticker] = df["Close"]
+                prices_by_date[ticker] = adj_close_series
 
                 raw_return = (close_price - open_price) / open_price
                 adj_return = raw_return * direction
@@ -48,26 +51,24 @@ def compute_all_returns(shares_held, df_prices, ticker_metadata, purchase_date, 
         if series_list:
             portfolio_returns[player] = pd.concat(series_list, axis=1).mean(axis=1)
 
-    # Daily change % per ticker
+    # Compute daily % change
     for ticker in df_prices.columns.levels[0]:
         try:
-            close_series = df_prices[ticker]["Close"].dropna()
-            if len(close_series) >= 2:
-                change = ((close_series.iloc[-1] - close_series.iloc[-2]) / close_series.iloc[-2]) * 100
+            series = df_prices[ticker]["Adj Close"].dropna()
+            if len(series) >= 2:
+                change = ((series.iloc[-1] - series.iloc[-2]) / series.iloc[-2]) * 100
                 daily_changes[ticker] = round(change, 2)
         except:
             continue
 
-    # Build dataframe
+    # Add Daily Change column
     df_results = pd.DataFrame(results)
-
-    # Add daily change column
     ticker_to_company = {v["Company"]: k for k, v in ticker_metadata.items()}
     df_results["Daily Change (%)"] = df_results["Company"].map(
         lambda name: daily_changes.get(ticker_to_company.get(name, ""), None)
     )
 
-    # Compute summary
+    # Summary table per player
     player_summary = (
         df_results.groupby("Player")["Value ($)"]
         .sum()
