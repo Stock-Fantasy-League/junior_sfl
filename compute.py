@@ -1,40 +1,45 @@
 import pandas as pd
 
-def compute_all_returns(shares_held, df_prices, ticker_metadata, purchase_date, return_basis, TOTAL_CAPITAL):
+def compute_all_returns(df_prices, ticker_metadata, shares_held, purchase_date, return_basis):
     results = []
-    players_with_missing_data = set()
     portfolio_returns = pd.DataFrame()
     daily_changes = {}
-    prices_by_date = {}
+    players_with_missing_data = set()
+
+    return_df = {}  # Dictionary to store each player's return time series
 
     for player, positions in shares_held.items():
-        series_list = []
+        player_returns = []
+
         for ticker, (capital, direction) in positions.items():
             try:
                 df = df_prices[ticker].dropna()
                 df.index = df.index.date
                 df = df[df.index >= purchase_date]
                 if df.empty or purchase_date not in df.index:
+                    players_with_missing_data.add(player)
                     continue
 
+                # DRIP: use adjusted close instead of close
+                open_price = df.loc[purchase_date]["Open"]
                 adj_close_series = df["Adj Close"]
-                open_price = adj_close_series.loc[purchase_date]
+
                 close_idx = -2 if return_basis == "Previous Close" and len(df) >= 2 else -1
-                close_price = adj_close_series.iloc[close_idx]
-
-                # Time series return
-                df_return = ((adj_close_series - open_price) / open_price * 100) * direction
-                df_return.name = player
-                series_list.append(df_return)
-
-                # Store return details
-                shares = capital / open_price
-                shares_held[player][ticker] = shares * direction
-                prices_by_date[ticker] = adj_close_series
+                close_price = df.iloc[close_idx]["Adj Close"]
 
                 raw_return = (close_price - open_price) / open_price
                 adj_return = raw_return * direction
                 value_now = capital * (1 + adj_return)
+
+                # Compute daily return time series
+                df_return = ((adj_close_series - open_price) / open_price * 100) * direction
+                df_return.name = player
+                player_returns.append(df_return)
+
+                # Add daily change % (most recent 2 adjusted closes)
+                if len(adj_close_series) >= 2:
+                    daily_change = ((adj_close_series.iloc[-1] - adj_close_series.iloc[-2]) / adj_close_series.iloc[-2]) * 100
+                    daily_changes[ticker] = round(daily_change, 2)
 
                 results.append({
                     "Company": ticker_metadata[ticker]["Company"],
@@ -45,40 +50,12 @@ def compute_all_returns(shares_held, df_prices, ticker_metadata, purchase_date, 
                     "Value ($)": round(value_now),
                     "Return (%)": round(adj_return * 100, 2),
                 })
-            except:
+
+            except Exception as e:
                 players_with_missing_data.add(player)
 
-        if series_list:
-            portfolio_returns[player] = pd.concat(series_list, axis=1).mean(axis=1)
+        if player_returns:
+            portfolio_returns[player] = pd.concat(player_returns, axis=1).mean(axis=1)
 
-    # Compute daily % change
-    for ticker in df_prices.columns.levels[0]:
-        try:
-            series = df_prices[ticker]["Adj Close"].dropna()
-            if len(series) >= 2:
-                change = ((series.iloc[-1] - series.iloc[-2]) / series.iloc[-2]) * 100
-                daily_changes[ticker] = round(change, 2)
-        except:
-            continue
-
-    # Add Daily Change column
     df_results = pd.DataFrame(results)
-    ticker_to_company = {v["Company"]: k for k, v in ticker_metadata.items()}
-    df_results["Daily Change (%)"] = df_results["Company"].map(
-        lambda name: daily_changes.get(ticker_to_company.get(name, ""), None)
-    )
-
-    # Summary table per player
-    player_summary = (
-        df_results.groupby("Player")["Value ($)"]
-        .sum()
-        .reset_index()
-        .assign(**{
-            "Portfolio Value ($)": lambda df: df["Value ($)"].round(),
-            "Return (%)": lambda df: ((df["Value ($)"] - TOTAL_CAPITAL) / TOTAL_CAPITAL * 100).round(2)
-        })
-        .sort_values("Return (%)", ascending=False)
-        .reset_index(drop=True)
-    )
-
-    return df_results, player_summary, portfolio_returns, daily_changes, players_with_missing_data
+    return df_results, portfolio_returns, daily_changes, players_with_missing_data
