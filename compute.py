@@ -2,7 +2,17 @@
 
 import pandas as pd
 
-def compute_all_returns(df_prices, shares_held, all_tickers, ticker_to_player, ticker_to_direction, return_basis, use_adj_close):
+def compute_all_returns(
+    df_prices,
+    shares_held,
+    all_tickers,
+    ticker_to_player,
+    ticker_to_direction,
+    return_basis,
+    use_adj_close,
+    benchmark_ticker,
+    positions
+):
     price_col = "Adj Close" if use_adj_close else "Close"
     df_results = []
     daily_changes = {}
