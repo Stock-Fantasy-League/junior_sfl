@@ -1,9 +1,13 @@
 import pandas as pd
 
-def compute_all_returns(df_prices, shares_held, ticker_to_player, ticker_to_direction, purchase_date, return_basis, ticker_metadata, use_adj_close):
+def compute_all_returns(
+    df_prices, shares_held, ticker_to_player,
+    ticker_to_direction, purchase_date,
+    return_basis, ticker_metadata, use_adj_close
+):
     results = []
     portfolio_returns = pd.DataFrame()
-    prices_by_date = {}
+    daily_changes = {}
     players_with_missing_data = set()
 
     price_col = "Adj Close" if use_adj_close else "Close"
@@ -28,7 +32,7 @@ def compute_all_returns(df_prices, shares_held, ticker_to_player, ticker_to_dire
 
                 shares = capital / open_price
                 shares_held[player][ticker] = shares * direction
-                prices_by_date[ticker] = df[price_col]
+                daily_changes[ticker] = df[price_col]
 
                 raw_return = (close_price - open_price) / open_price
                 adj_return = raw_return * direction
@@ -50,4 +54,4 @@ def compute_all_returns(df_prices, shares_held, ticker_to_player, ticker_to_dire
             portfolio_returns[player] = pd.concat(series_list, axis=1).mean(axis=1)
 
     df_results = pd.DataFrame(results)
-    return df_results, portfolio_returns, prices_by_date, players_with_missing_data
+    return df_results, portfolio_returns, daily_changes, players_with_missing_data
