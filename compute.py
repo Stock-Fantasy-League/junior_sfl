@@ -1,5 +1,3 @@
-# compute.py
-
 import pandas as pd
 
 def compute_all_returns(
@@ -11,54 +9,60 @@ def compute_all_returns(
     return_basis,
     use_adj_close,
     benchmark_ticker,
-    positions
+    positions_raw
 ):
     price_col = "Adj Close" if use_adj_close else "Close"
     df_results = []
     daily_changes = {}
     players_with_missing_data = set()
 
-    for player, player_positions in shares_held.items():
+    for player, positions in positions_raw.items():
         player_data = []
-        for ticker, (shares, direction) in player_positions.items():
+        for ticker, (capital, direction) in positions.items():
             try:
                 prices = df_prices[price_col][ticker]
-                price_start = prices.iloc[0]
-                price_end = prices.iloc[-1] if return_basis == "Latest Close" else prices.iloc[-2]
-                ret = ((price_end - price_start) / price_start) * direction
-                value = shares * price_end * direction
+                prices = prices.dropna()
+                prices.index = pd.to_datetime(prices.index).date
+
+                if len(prices) < 2 or prices.empty:
+                    players_with_missing_data.add(player)
+                    continue
+
+                purchase_date = prices.index[0]
+                open_price = df_prices["Open"][ticker].loc[purchase_date]
+                close_idx = -2 if return_basis == "Previous Close" and len(prices) >= 2 else -1
+                close_price = prices.iloc[close_idx]
+
+                shares = capital / open_price
+                ret = ((close_price - open_price) / open_price) * direction
+                value = shares * close_price * direction
+
                 player_data.append({
+                    "Player": player,
                     "Ticker": ticker,
-                    "Return": ret,
-                    "Value": value,
-                    "Shares": shares,
-                    "Start Price": price_start,
-                    "End Price": price_end
+                    "Return": round(ret * 100, 2),
+                    "Value ($)": round(value, 2),
+                    "Purchase Price": round(open_price, 2),
+                    "Current Price": round(close_price, 2)
                 })
+
                 daily_change = prices.pct_change().fillna(0) * shares * direction
                 if player not in daily_changes:
                     daily_changes[player] = daily_change
                 else:
                     daily_changes[player] += daily_change
+
             except Exception as e:
                 players_with_missing_data.add(player)
-                print(f"Error processing {ticker} for {player}: {e}")
+                print(f"⚠️ {player} | {ticker}: {e}")
                 continue
-        if player_data:
-            df_results.extend([
-                {
-                    "Player": player,
-                    **record
-                }
-                for record in player_data
-            ])
+
+        df_results.extend(player_data)
 
     df_results = pd.DataFrame(df_results)
-    df_results["Weighted Return"] = df_results["Return"]
     player_summary = df_results.groupby("Player").agg(
-        Total_Return=("Weighted Return", "mean"),
-        Total_Value=("Value", "sum")
-    ).reset_index()
-    portfolio_returns = player_summary.sort_values("Total_Return", ascending=False)
+        Return_Percent=("Return", "mean"),
+        Total_Value=("Value ($)", "sum")
+    ).reset_index().sort_values("Return_Percent", ascending=False)
 
-    return df_results, player_summary, portfolio_returns, daily_changes, players_with_missing_data
+    return df_results, player_summary, daily_changes, players_with_missing_data
