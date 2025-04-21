@@ -1,37 +1,35 @@
 # portfolio.py
 
-def parse_positions(roster, position_map, ticker_replacements, total_capital):
+from config import TICKER_REPLACEMENTS, POSITION_MAP
+
+def parse_positions(roster_df, total_capital, position_map=POSITION_MAP):
     shares_held = {}
-    positions_dict = {}
+    all_tickers = set()
     ticker_to_player = {}
     ticker_to_direction = {}
-    all_tickers = set()
+    positions = {}
 
-    for _, row in roster.iterrows():
-        player = row["Player"]
-        positions = []
+    for _, row in roster_df.iterrows():
+        player = row[0]
+        raw_ticker = str(row[1]).strip().upper()
+        pos_raw = row[2]
+        capital = row[3]
 
-        for i in range(1, 6):
-            raw_ticker = str(row.get(f"Stock {i}", "")).strip().upper()
-            pos_raw = str(row.get(f"Position {i}", "")).strip().upper()
-            if not raw_ticker:
-                continue
+        # Apply any ticker replacements (e.g., BRK.B -> BRK-B)
+        ticker = TICKER_REPLACEMENTS.get(raw_ticker, raw_ticker)
 
-            ticker = ticker_replacements.get(raw_ticker, raw_ticker)
-            direction = position_map.get(pos_raw, 1)
+        # Handle position direction (LONG/SHORT)
+        if isinstance(pos_raw, str):
+            direction = position_map.get(pos_raw.strip().upper(), 1)
+        else:
+            direction = 1  # Default to LONG if missing or invalid
 
-            positions.append((ticker, direction))
-            ticker_to_player[ticker] = player
-            ticker_to_direction[ticker] = direction
-            all_tickers.add(ticker)
+        shares = (capital * direction) / 1_000_000 * total_capital  # Scale to total capital
+        positions[ticker] = (shares, capital, direction)
 
-        if positions:
-            capital_per_position = total_capital / len(positions)
-            shares_held[player] = {}
-            positions_dict[player] = {}
+        shares_held[ticker] = shares
+        all_tickers.add(ticker)
+        ticker_to_player[ticker] = player
+        ticker_to_direction[ticker] = direction
 
-            for ticker, direction in positions:
-                shares_held[player][ticker] = (capital_per_position, direction)
-                positions_dict[player][ticker] = (capital_per_position, direction)
-
-    return shares_held, positions_dict, ticker_to_player, ticker_to_direction, all_tickers
+    return shares_held, all_tickers, ticker_to_player, ticker_to_direction, positions
