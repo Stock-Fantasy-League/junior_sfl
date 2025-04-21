@@ -42,7 +42,8 @@ shares_held, all_tickers, ticker_to_player, ticker_to_direction = parse_roster(
 )
 
 ticker_metadata = fetch_metadata(all_tickers)
-df_prices = fetch_prices(all_tickers.union({BENCHMARK_TICKER}), purchase_date)
+tickers_to_fetch = set(all_tickers) | {BENCHMARK_TICKER}
+df_prices = fetch_prices(tickers_to_fetch, purchase_date)
 
 # === Compute Returns & Summary Tables ===
 df_results, player_summary, portfolio_returns, daily_changes, players_with_missing_data = compute_all_returns(
