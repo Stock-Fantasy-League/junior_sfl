@@ -1,13 +1,26 @@
 # portfolio.py
 
-from config import TICKER_REPLACEMENTS, POSITION_MAP
+def parse_positions(roster_df, total_capital, position_map, ticker_replacements):
+    """
+    Parses a DataFrame of positions and returns shares held, all tickers,
+    and mappings from ticker to player and direction.
 
-def parse_positions(roster_df, total_capital, position_map=POSITION_MAP, ticker_replacements=TICKER_REPLACEMENTS):
+    Args:
+        roster_df (pd.DataFrame): DataFrame with columns [Player, Ticker, Direction, Capital].
+        total_capital (float): Total portfolio capital in dollars.
+        position_map (dict): Mapping from textual directions to numeric (+1/-1).
+        ticker_replacements (dict): Mapping from incorrect tickers to corrected ones.
+
+    Returns:
+        dict: shares_held
+        set: all_tickers
+        dict: ticker_to_player
+        dict: ticker_to_direction
+    """
     shares_held = {}
     all_tickers = set()
     ticker_to_player = {}
     ticker_to_direction = {}
-    positions = {}
 
     for _, row in roster_df.iterrows():
         player = row[0]
@@ -15,10 +28,10 @@ def parse_positions(roster_df, total_capital, position_map=POSITION_MAP, ticker_
         pos_raw = row[2]
         capital = row[3]
 
-        # Replace known tickers (e.g., BRK.B → BRK-B)
+        # Standardize ticker
         ticker = ticker_replacements.get(raw_ticker, raw_ticker)
 
-        # Parse position direction (handle missing or numeric)
+        # Interpret direction
         if isinstance(pos_raw, str):
             direction = position_map.get(pos_raw.strip().upper(), 1)
         elif isinstance(pos_raw, (int, float)):
@@ -26,11 +39,19 @@ def parse_positions(roster_df, total_capital, position_map=POSITION_MAP, ticker_
         else:
             direction = 1
 
-        shares = (capital * direction) / 1_000_000 * total_capital
+        # Safely convert capital to float
+        try:
+            capital_value = float(capital)
+        except Exception:
+            capital_value = 0.0
+
+        # Convert from millions to dollars and apply direction
+        shares = (capital_value * direction) / 1_000_000 * total_capital
+
+        # Store values
         shares_held[ticker] = shares
         all_tickers.add(ticker)
         ticker_to_player[ticker] = player
         ticker_to_direction[ticker] = direction
-        positions[ticker] = (shares, capital, direction)
 
-    return shares_held, all_tickers, ticker_to_player, ticker_to_direction, positions
+    return shares_held, all_tickers, ticker_to_player, ticker_to_direction
