@@ -1,50 +1,59 @@
 import streamlit as st
+import pandas as pd
 from datetime import datetime
-from config import EXCEL_FILE, BENCHMARK_TICKER
+
+from config import EXCEL_FILE
 from data_loader import load_settings, load_roster
 from portfolio import parse_roster
-from finance_utils import fetch_prices, fetch_metadata
+from finance_utils import fetch_metadata, fetch_prices
 from compute import compute_all_returns
 from visuals import show_leaderboard, show_performance_chart
 
-# === Streamlit Setup ===
+# === MUST BE FIRST STREAMLIT COMMAND ===
 st.set_page_config(layout="wide")
-st.sidebar.caption(f"Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
-# === Load Settings and Inputs ===
-settings = load_settings(EXCEL_FILE)
-start_date = settings["start_date"]
-initial_capital = settings["initial_capital"]
-benchmark = settings.get("benchmark", BENCHMARK_TICKER)
+# === Load settings ===
+settings = load_settings()
+raw_date = settings.get("start_date", "2025-03-24")
+purchase_date = pd.to_datetime(str(raw_date).strip(), errors="coerce").date()
+purchase_date_str = purchase_date.isoformat()
+TOTAL_CAPITAL = float(settings.get("initial_capital", 5000))
+BENCHMARK_TICKER = settings.get("benchmark", "SPY").strip().upper()
+
+# === App layout ===
+st.sidebar.button("🔄 Refresh Leaderboard")
+st.sidebar.caption(f"Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
 st.markdown("""
     <h1 style='display: flex; align-items: center;'>📊 2025 Junior Stock Fantasy League</h1>
 """, unsafe_allow_html=True)
-st.markdown(f"<h4>🗓️ Start date: <b>{start_date}</b></h4>", unsafe_allow_html=True)
+
+st.markdown(f"<h4>📅 Start date: <b>{purchase_date_str}</b></h4>", unsafe_allow_html=True)
 st.caption("Sorted by return — each position equally weighted. Purchase = market open, return = close price basis.")
 
-# === User Input Controls ===
+# === Toggle options ===
 return_basis = st.radio("Return Basis", ["Latest Close", "Previous Close"], horizontal=True)
-use_adj_close = st.toggle("Enable Dividend Reinvestment (DRIP)", value=True)
+use_adj_close = st.radio("Use Adjusted Close (DRIP)?", ["Yes", "No"], horizontal=True) == "Yes"
 
-# === Load Roster and Ticker Info ===
-roster = load_roster(EXCEL_FILE)
-shares_held, tickers = parse_roster(roster, settings)
+# === Load portfolio data ===
+roster = load_roster()
+shares_held, all_tickers, ticker_to_player, ticker_to_direction = parse_roster(roster, TOTAL_CAPITAL)
 
-# === Fetch Metadata and Prices ===
-ticker_metadata = fetch_metadata(tickers)
-df_prices = fetch_prices(tickers.union({benchmark}), start_date.isoformat(), use_adj_close=use_adj_close)
+# === Fetch metadata and price data ===
+ticker_metadata = fetch_metadata(all_tickers)
+df_prices = fetch_prices(all_tickers.union({BENCHMARK_TICKER}), purchase_date, use_adj_close)
 
-# === Compute All Returns and Summary Data ===
+# === Compute returns and errors ===
 df_results, player_summary, portfolio_returns, daily_changes, players_with_missing_data = compute_all_returns(
-    shares_held, df_prices, ticker_metadata, start_date, return_basis, initial_capital
+    shares_held, df_prices, ticker_metadata, purchase_date, return_basis, TOTAL_CAPITAL
 )
 
-# === Show Warnings if Any Tickers Fail ===
+# === Show warnings ===
 if players_with_missing_data:
-    st.warning("⚠️ Some players have stocks with missing or invalid data (e.g., delisted or rate-limited): " +
-               ", ".join(sorted(players_with_missing_data)))
+    st.warning("Some players have missing data. Affected: " + ", ".join(sorted(players_with_missing_data)))
 
-# === Render Visuals ===
-show_leaderboard(df_results, daily_changes)
-show_performance_chart(player_summary, portfolio_returns, df_prices, return_basis, benchmark, start_date)
+# === Render Leaderboard ===
+show_leaderboard(df_results)
+
+# === Render Performance Tab ===
+show_performance_chart(player_summary, portfolio_returns, df_prices, return_basis, BENCHMARK_TICKER, purchase_date)
