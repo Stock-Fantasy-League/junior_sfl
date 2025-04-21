@@ -46,8 +46,12 @@ ticker_metadata = fetch_metadata(tickers_to_fetch)
 df_prices = fetch_prices(tickers_to_fetch, purchase_date)
 
 # === Compute All Portfolio Returns ===
-df_results, player_summary, portfolio_returns, daily_changes, players_with_missing_data = compute_all_returns(
-    shares_held, df_prices, ticker_metadata, purchase_date, return_basis, TOTAL_CAPITAL
+df_results, portfolio_returns, daily_changes, players_with_missing_data = compute_all_returns(
+    df_prices=df_prices,
+    ticker_metadata=ticker_metadata,
+    shares_held=shares_held,
+    purchase_date=purchase_date,
+    return_basis=return_basis
 )
 
 # === Missing Data Warning
