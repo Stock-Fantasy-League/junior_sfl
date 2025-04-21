@@ -1,17 +1,11 @@
 import pandas as pd
 
-def compute_returns(
-    df_prices,
-    shares_held,
-    ticker_metadata,
-    purchase_date,
-    return_basis,
-    total_capital
-):
+def compute_all_returns(shares_held, df_prices, ticker_metadata, purchase_date, return_basis, TOTAL_CAPITAL):
     results = []
-    prices_by_date = {}
-    portfolio_returns = pd.DataFrame()
     players_with_missing_data = set()
+    portfolio_returns = pd.DataFrame()
+    daily_changes = {}
+    prices_by_date = {}
 
     for player, positions in shares_held.items():
         series_list = []
@@ -54,13 +48,7 @@ def compute_returns(
         if series_list:
             portfolio_returns[player] = pd.concat(series_list, axis=1).mean(axis=1)
 
-    df_results = pd.DataFrame(results)
-
-    return df_results, portfolio_returns, players_with_missing_data
-
-
-def compute_daily_changes(df_prices):
-    daily_changes = {}
+    # Daily change % per ticker
     for ticker in df_prices.columns.levels[0]:
         try:
             close_series = df_prices[ticker]["Close"].dropna()
@@ -69,19 +57,27 @@ def compute_daily_changes(df_prices):
                 daily_changes[ticker] = round(change, 2)
         except:
             continue
-    return daily_changes
 
+    # Build dataframe
+    df_results = pd.DataFrame(results)
 
-def compute_summary_table(df_results, total_capital):
+    # Add daily change column
+    ticker_to_company = {v["Company"]: k for k, v in ticker_metadata.items()}
+    df_results["Daily Change (%)"] = df_results["Company"].map(
+        lambda name: daily_changes.get(ticker_to_company.get(name, ""), None)
+    )
+
+    # Compute summary
     player_summary = (
         df_results.groupby("Player")["Value ($)"]
         .sum()
         .reset_index()
         .assign(**{
             "Portfolio Value ($)": lambda df: df["Value ($)"].round(),
-            "Return (%)": lambda df: ((df["Value ($)"] - total_capital) / total_capital * 100).round(2)
+            "Return (%)": lambda df: ((df["Value ($)"] - TOTAL_CAPITAL) / TOTAL_CAPITAL * 100).round(2)
         })
         .sort_values("Return (%)", ascending=False)
         .reset_index(drop=True)
     )
-    return player_summary
+
+    return df_results, player_summary, portfolio_returns, daily_changes, players_with_missing_data
