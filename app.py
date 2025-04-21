@@ -5,7 +5,7 @@ import pandas as pd
 from datetime import datetime
 from config import EXCEL_FILE, TICKER_REPLACEMENTS, POSITION_MAP
 from data_loader import load_settings, load_roster
-from portfolio import parse_roster
+from portfolio import parse_positions
 from finance_utils import fetch_metadata, fetch_prices
 from compute import compute_all_returns
 from visuals import show_leaderboard, show_performance_chart
