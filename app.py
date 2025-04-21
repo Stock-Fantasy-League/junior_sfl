@@ -54,5 +54,5 @@ df_results, player_summary, portfolio_returns, daily_changes, players_with_missi
 )
 
 # === Visualize ===
-show_leaderboard(df_results, daily_changes, TOTAL_CAPITAL, players_with_missing_data)
+show_leaderboard(df_results, daily_changes, players_with_missing_data)
 show_performance_chart(player_summary, portfolio_returns, df_prices, return_basis, BENCHMARK_TICKER, purchase_date)
