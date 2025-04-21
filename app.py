@@ -39,7 +39,7 @@ use_adj_close = st.radio("Use Adjusted Close (DRIP)?", ["Yes", "No"], index=0, h
 
 # === Load roster and parse ===
 roster_df = load_roster(EXCEL_FILE)
-shares_held, all_tickers, ticker_to_player, ticker_to_direction = parse_roster(
+shares_held, all_tickers, ticker_to_player, ticker_to_direction = parse_positions(
     roster_df, TOTAL_CAPITAL, POSITION_MAP, TICKER_REPLACEMENTS
 )
 
