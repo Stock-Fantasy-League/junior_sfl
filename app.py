@@ -1,5 +1,5 @@
 import streamlit as st
-from datetime import datetime
+purchase_date = pd.to_datetime(raw_date).date()
 from config import EXCEL_FILE
 from data_loader import load_settings, load_roster
 from portfolio import parse_roster
@@ -10,7 +10,6 @@ from visuals import show_leaderboard, show_performance_chart
 # === Load settings ===
 settings_dict = load_settings(EXCEL_FILE)
 raw_date = settings_dict.get("start_date", "2025-03-24")
-purchase_date = datetime.strptime(str(raw_date), "%Y-%m-%d").date()
 purchase_date_str = purchase_date.isoformat()
 TOTAL_CAPITAL = float(settings_dict.get("initial_capital", 5000))
 BENCHMARK_TICKER = settings_dict.get("benchmark", "SPY").strip().upper()
