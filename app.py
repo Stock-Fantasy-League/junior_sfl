@@ -1,75 +1,50 @@
 import streamlit as st
 from datetime import datetime
-from config import EXCEL_FILE
+from config import EXCEL_FILE, BENCHMARK_TICKER
 from data_loader import load_settings, load_roster
 from portfolio import parse_roster
-from finance_utils import fetch_metadata, fetch_prices
+from finance_utils import fetch_prices, fetch_metadata
 from compute import compute_all_returns
-from visuals import show_leaderboard, show_performance_chart  # ✅ Both views
+from visuals import show_leaderboard, show_performance_chart
 
-# === Streamlit Layout ===
+# === Streamlit Setup ===
 st.set_page_config(layout="wide")
-st.sidebar.button("Refresh Leaderboard")
 st.sidebar.caption(f"Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
+# === Load Settings and Inputs ===
+settings = load_settings(EXCEL_FILE)
+start_date = settings["start_date"]
+initial_capital = settings["initial_capital"]
+benchmark = settings.get("benchmark", BENCHMARK_TICKER)
+
 st.markdown("""
-    <h1 style='display: flex; align-items: center;'>
-        📊 2025 Junior Stock Fantasy League
-    </h1>
+    <h1 style='display: flex; align-items: center;'>📊 2025 Junior Stock Fantasy League</h1>
 """, unsafe_allow_html=True)
-
-# === Load Settings ===
-settings = load_settings()
-raw_date = settings.get("start_date", "2025-03-24")
-purchase_date_str = raw_date
-purchase_date = datetime.strptime(purchase_date_str, "%Y-%m-%d").date()
-TOTAL_CAPITAL = float(settings.get("initial_capital", 5000))
-BENCHMARK_TICKER = settings.get("benchmark", "SPY").strip().upper()
-
-st.markdown(f"<h4>🗓️ Start date: <b>{purchase_date_str}</b></h4>", unsafe_allow_html=True)
+st.markdown(f"<h4>🗓️ Start date: <b>{start_date}</b></h4>", unsafe_allow_html=True)
 st.caption("Sorted by return — each position equally weighted. Purchase = market open, return = close price basis.")
 
-# === Return Basis Toggle ===
+# === User Input Controls ===
 return_basis = st.radio("Return Basis", ["Latest Close", "Previous Close"], horizontal=True)
+use_adj_close = st.toggle("Enable Dividend Reinvestment (DRIP)", value=True)
 
-# === Load Roster and Metadata ===
-roster = load_roster()
-position_map = {"LONG": 1, "SHORT": -1, "+1": 1, "-1": -1}
-ticker_replacements = {"BRK.B": "BRK-B", "MOG.A": "MOG-A"}
+# === Load Roster and Ticker Info ===
+roster = load_roster(EXCEL_FILE)
+shares_held, tickers = parse_roster(roster, settings)
 
-shares_held, all_tickers, ticker_to_player, ticker_to_direction = parse_roster(
-    roster, TOTAL_CAPITAL, position_map, ticker_replacements
+# === Fetch Metadata and Prices ===
+ticker_metadata = fetch_metadata(tickers)
+df_prices = fetch_prices(tickers.union({benchmark}), start_date.isoformat(), use_adj_close=use_adj_close)
+
+# === Compute All Returns and Summary Data ===
+df_results, player_summary, portfolio_returns, daily_changes, players_with_missing_data = compute_all_returns(
+    shares_held, df_prices, ticker_metadata, start_date, return_basis, initial_capital
 )
 
-tickers_to_fetch = set(all_tickers) | {BENCHMARK_TICKER}
-ticker_metadata = fetch_metadata(tickers_to_fetch)
-df_prices = fetch_prices(tickers_to_fetch, purchase_date)
-
-# === Compute All Portfolio Returns ===
-df_results, portfolio_returns, daily_changes, players_with_missing_data = compute_all_returns(
-    df_prices=df_prices,
-    ticker_metadata=ticker_metadata,
-    shares_held=shares_held,
-    purchase_date=purchase_date,
-    return_basis=return_basis
-)
-
-# === Missing Data Warning
+# === Show Warnings if Any Tickers Fail ===
 if players_with_missing_data:
-    st.warning("Some players have missing stock data. Their returns may be inaccurate. Please refresh the leaderboard. Players affected: " + ", ".join(sorted(players_with_missing_data)))
+    st.warning("⚠️ Some players have stocks with missing or invalid data (e.g., delisted or rate-limited): " +
+               ", ".join(sorted(players_with_missing_data)))
 
-# === Tabs ===
-tab1, tab2 = st.tabs(["📋 Leaderboard", "📈 Performance"])
-
-with tab1:
-    show_leaderboard(df_results)
-
-with tab2:
-    show_performance_chart(
-        player_summary,
-        portfolio_returns,
-        df_prices,
-        return_basis,
-        BENCHMARK_TICKER,
-        purchase_date
-    )
+# === Render Visuals ===
+show_leaderboard(df_results, daily_changes)
+show_performance_chart(player_summary, portfolio_returns, df_prices, return_basis, benchmark, start_date)
