@@ -1,3 +1,5 @@
+# compute.py
+
 import pandas as pd
 
 def compute_all_returns(
@@ -9,19 +11,18 @@ def compute_all_returns(
     return_basis,
     use_adj_close,
     benchmark_ticker,
-    positions_raw
+    positions_dict
 ):
     price_col = "Adj Close" if use_adj_close else "Close"
     df_results = []
     daily_changes = {}
     players_with_missing_data = set()
 
-    for player, positions in positions_raw.items():
+    for player, player_positions in positions_dict.items():
         player_data = []
-        for ticker, (capital, direction) in positions.items():
+        for ticker, (capital, direction) in player_positions.items():
             try:
-                prices = df_prices[price_col][ticker]
-                prices = prices.dropna()
+                prices = df_prices[price_col][ticker].dropna()
                 prices.index = pd.to_datetime(prices.index).date
 
                 if len(prices) < 2 or prices.empty:
