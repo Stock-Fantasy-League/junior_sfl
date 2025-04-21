@@ -1,6 +1,6 @@
 # portfolio.py
 
-def parse_positions(roster, position_map, replacements, total_capital):
+def parse_positions(roster, position_map, ticker_replacements, total_capital):
     shares_held = {}
     positions_dict = {}
     ticker_to_player = {}
@@ -16,8 +16,10 @@ def parse_positions(roster, position_map, replacements, total_capital):
             pos_raw = str(row.get(f"Position {i}", "")).strip().upper()
             if not raw_ticker:
                 continue
-            ticker = replacements.get(raw_ticker, raw_ticker)
+
+            ticker = ticker_replacements.get(raw_ticker, raw_ticker)
             direction = position_map.get(pos_raw, 1)
+
             positions.append((ticker, direction))
             ticker_to_player[ticker] = player
             ticker_to_direction[ticker] = direction
