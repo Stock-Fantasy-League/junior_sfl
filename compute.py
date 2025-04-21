@@ -1,57 +1,54 @@
+# compute.py
+
 import pandas as pd
 
-def compute_all_returns(
-    df_prices, shares_held, all_tickers, ticker_to_player,
-    ticker_to_direction, purchase_date,
-    return_basis, ticker_metadata, use_adj_close
-):
-    results = []
-    portfolio_returns = pd.DataFrame()
+def compute_all_returns(df_prices, shares_held, all_tickers, ticker_to_player, ticker_to_direction, return_basis, use_adj_close):
+    price_col = "Adj Close" if use_adj_close else "Close"
+    df_results = []
     daily_changes = {}
     players_with_missing_data = set()
 
-    price_col = "Adj Close" if use_adj_close else "Close"
-
-    for player, positions in shares_held.items():
-        series_list = []
-        for ticker, (capital, direction) in positions.items():
+    for player, player_positions in shares_held.items():
+        player_data = []
+        for ticker, (shares, direction) in player_positions.items():
             try:
-                df = df_prices[ticker].dropna()
-                df.index = df.index.date
-                df = df[df.index >= purchase_date]
-                if df.empty or purchase_date not in df.index:
-                    continue
-
-                open_price = df.loc[purchase_date]["Open"]
-                close_idx = -2 if return_basis == "Previous Close" and len(df) >= 2 else -1
-                close_price = df.iloc[close_idx][price_col]
-
-                df_return = ((df[price_col] - open_price) / open_price * 100) * direction
-                df_return.name = player
-                series_list.append(df_return)
-
-                shares = capital / open_price
-                shares_held[player][ticker] = shares * direction
-                daily_changes[ticker] = df[price_col]
-
-                raw_return = (close_price - open_price) / open_price
-                adj_return = raw_return * direction
-                value_now = capital * (1 + adj_return)
-
-                results.append({
-                    "Company": ticker_metadata[ticker]["Company"],
-                    "Industry": ticker_metadata[ticker]["Industry"],
-                    "Player": player,
-                    "Purchase Price": round(open_price),
-                    "Current Price": round(close_price),
-                    "Value ($)": round(value_now),
-                    "Return (%)": round(adj_return * 100, 2),
+                prices = df_prices[price_col][ticker]
+                price_start = prices.iloc[0]
+                price_end = prices.iloc[-1] if return_basis == "Latest Close" else prices.iloc[-2]
+                ret = ((price_end - price_start) / price_start) * direction
+                value = shares * price_end * direction
+                player_data.append({
+                    "Ticker": ticker,
+                    "Return": ret,
+                    "Value": value,
+                    "Shares": shares,
+                    "Start Price": price_start,
+                    "End Price": price_end
                 })
-            except:
+                daily_change = prices.pct_change().fillna(0) * shares * direction
+                if player not in daily_changes:
+                    daily_changes[player] = daily_change
+                else:
+                    daily_changes[player] += daily_change
+            except Exception as e:
                 players_with_missing_data.add(player)
+                print(f"Error processing {ticker} for {player}: {e}")
+                continue
+        if player_data:
+            df_results.extend([
+                {
+                    "Player": player,
+                    **record
+                }
+                for record in player_data
+            ])
 
-        if series_list:
-            portfolio_returns[player] = pd.concat(series_list, axis=1).mean(axis=1)
+    df_results = pd.DataFrame(df_results)
+    df_results["Weighted Return"] = df_results["Return"]
+    player_summary = df_results.groupby("Player").agg(
+        Total_Return=("Weighted Return", "mean"),
+        Total_Value=("Value", "sum")
+    ).reset_index()
+    portfolio_returns = player_summary.sort_values("Total_Return", ascending=False)
 
-    df_results = pd.DataFrame(results)
-    return df_results, portfolio_returns, daily_changes, players_with_missing_data
+    return df_results, player_summary, portfolio_returns, daily_changes, players_with_missing_data
