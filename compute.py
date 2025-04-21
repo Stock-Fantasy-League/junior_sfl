@@ -1,7 +1,7 @@
 import pandas as pd
 
 def compute_all_returns(
-    df_prices, shares_held, ticker_to_player,
+    df_prices, shares_held, all_tickers, ticker_to_player,
     ticker_to_direction, purchase_date,
     return_basis, ticker_metadata, use_adj_close
 ):
