@@ -1,62 +1,88 @@
 # visuals.py
+
 import streamlit as st
 import plotly.express as px
 
-def show_leaderboard(df_results):
-    st.subheader("\U0001F4CB Position Leaderboard")
+def show_leaderboard(df_results, daily_changes):
+    st.subheader("📋 Position Leaderboard")
+
+    # Merge daily change into results if not already there
+    if "Daily Change (%)" not in df_results.columns:
+        ticker_to_company = {row["Company"]: row["Company"] for _, row in df_results.iterrows()}
+        df_results["Daily Change (%)"] = df_results["Company"].map(
+            lambda name: daily_changes.get(ticker_to_company.get(name, ""), None)
+        )
+
+    # Sort
     df_sorted = df_results.sort_values("Return (%)", ascending=False).reset_index(drop=True)
     df_sorted.index += 1
 
-    return_min = df_results["Return (%)"].min()
-    return_max = df_results["Return (%)"].max()
-    daily_min = df_results["Daily Change (%)"].min()
-    daily_max = df_results["Daily Change (%)"].max()
+    # Set global color bounds
+    return_min = df_sorted["Return (%)"].min()
+    return_max = df_sorted["Return (%)"].max()
+    daily_min = df_sorted["Daily Change (%)"].min()
+    daily_max = df_sorted["Daily Change (%)"].max()
 
+    # Top & Bottom 5
     col1, col2 = st.columns(2)
 
     with col1:
-        st.markdown("### \U0001F3C6 Top 5 Positions")
+        st.markdown("### 🏆 Top 5 Positions")
         top5 = df_sorted.head(5)[["Company", "Player", "Return (%)", "Daily Change (%)"]]
         st.dataframe(
             top5.style
             .format({"Return (%)": "{:.2f}", "Daily Change (%)": "{:.2f}"})
-            .background_gradient(subset=["Return (%)"], cmap="RdYlGn", vmin=return_min, vmax=return_max)
-            .background_gradient(subset=["Daily Change (%)"], cmap="RdBu", vmin=daily_min, vmax=daily_max),
+            .background_gradient("RdYlGn", subset=["Return (%)"], vmin=return_min, vmax=return_max)
+            .background_gradient("RdBu", subset=["Daily Change (%)"], vmin=daily_min, vmax=daily_max),
             use_container_width=True,
             hide_index=True
         )
 
     with col2:
-        st.markdown("### \U0001F4A5 Bottom 5 Positions")
+        st.markdown("### 💥 Bottom 5 Positions")
         bottom5 = df_sorted.tail(5)[["Company", "Player", "Return (%)", "Daily Change (%)"]]
         st.dataframe(
             bottom5.style
             .format({"Return (%)": "{:.2f}", "Daily Change (%)": "{:.2f}"})
-            .background_gradient(subset=["Return (%)"], cmap="RdYlGn", vmin=return_min, vmax=return_max)
-            .background_gradient(subset=["Daily Change (%)"], cmap="RdBu", vmin=daily_min, vmax=daily_max),
+            .background_gradient("RdYlGn", subset=["Return (%)"], vmin=return_min, vmax=return_max)
+            .background_gradient("RdBu", subset=["Daily Change (%)"], vmin=daily_min, vmax=daily_max),
             use_container_width=True,
             hide_index=True
         )
 
-    st.markdown("### \U0001F4CB Full Position Table")
-    full = df_sorted[["Company", "Industry", "Player", "Purchase Price", "Current Price", "Value ($)", "Return (%)", "Daily Change (%)"]]
+    # Full leaderboard
+    st.markdown("### 📋 Full Position Table")
+    col_order = [
+        "Company", "Industry", "Player",
+        "Purchase Price", "Current Price", "Value ($)",
+        "Return (%)", "Daily Change (%)"
+    ]
+    full = df_sorted[col_order]
+
     st.dataframe(
         full.style
         .format({"Return (%)": "{:.2f}", "Daily Change (%)": "{:.2f}"})
-        .background_gradient(subset=["Return (%)"], cmap="RdYlGn", vmin=return_min, vmax=return_max)
-        .background_gradient(subset=["Daily Change (%)"], cmap="RdBu", vmin=daily_min, vmax=daily_max),
+        .background_gradient("RdYlGn", subset=["Return (%)"], vmin=return_min, vmax=return_max)
+        .background_gradient("RdBu", subset=["Daily Change (%)"], vmin=daily_min, vmax=daily_max),
         use_container_width=True
     )
 
-def show_performance_chart(player_summary, portfolio_returns, df_prices, return_basis, benchmark, start_date):
-    st.subheader("\U0001F4C8 Player Return Comparison")
-    fig_bar = px.bar(player_summary, x="Player", y="Return (%)", color="Return (%)", color_continuous_scale="RdYlGn", title="Player Return (%)")
+def show_performance_chart(player_summary, portfolio_returns, df_prices, return_basis, benchmark_ticker, purchase_date):
+    st.subheader("📈 Player Return Comparison")
+    fig_bar = px.bar(
+        player_summary,
+        x="Player",
+        y="Return (%)",
+        color="Return (%)",
+        color_continuous_scale="RdYlGn",
+        title="Player Return (%)"
+    )
     fig_bar.update_layout(xaxis_title="Player", yaxis_title="Return (%)")
     st.plotly_chart(fig_bar, use_container_width=True)
 
-    st.subheader("\U0001F4C8 Return Over Time")
+    st.subheader("📈 Return Over Time")
     selected_players = st.multiselect("Select Players", sorted(player_summary["Player"].unique()), default=[])
-    show_benchmark = st.checkbox(f"Include Benchmark ({benchmark})", value=True)
+    show_benchmark = st.checkbox(f"Include Benchmark ({benchmark_ticker})", value=True)
 
     try:
         return_df = portfolio_returns.reset_index().melt(id_vars="index", var_name="Player", value_name="Return (%)")
@@ -68,24 +94,32 @@ def show_performance_chart(player_summary, portfolio_returns, df_prices, return_
 
         combined = return_df[return_df["Player"].isin(selected_players)]
 
-        if show_benchmark and benchmark in df_prices:
-            df_bench = df_prices[benchmark].dropna()
+        if show_benchmark and benchmark_ticker in df_prices:
+            df_bench = df_prices[benchmark_ticker].dropna()
             df_bench.index = df_bench.index.date
-            if start_date in df_bench.index:
-                bench_base = df_bench.loc[start_date]["Open"]
-                df_bench = df_bench[df_bench.index >= start_date]
-                bench_series = df_bench["Adj Close"]
-                if return_basis == "Previous Close" and len(bench_series) >= 2:
-                    bench_series = bench_series.iloc[:-1]
-                bench_returns = ((bench_series - bench_base) / bench_base * 100).round(2)
-                bench_returns = bench_returns.reset_index()
-                bench_returns["Player"] = "Benchmark"
-                bench_returns.rename(columns={"Adj Close": "Return (%)", "index": "Date"}, inplace=True)
-                combined = pd.concat([bench_returns, combined])
+            if purchase_date in df_bench.index:
+                base = df_bench.loc[purchase_date]["Open"]
+                df_bench = df_bench[df_bench.index >= purchase_date]
+                series = df_bench["Close"]
+                if return_basis == "Previous Close" and len(series) >= 2:
+                    series = series.iloc[:-1]
+                bench_return = ((series - base) / base * 100).round(2)
+                bench_return = bench_return.reset_index()
+                bench_return["Player"] = "Benchmark"
+                bench_return.rename(columns={"Close": "Return (%)", "index": "Date"}, inplace=True)
+                combined = pd.concat([bench_return, combined])
 
         if not combined.empty:
-            fig = px.line(combined, x="Date", y="Return (%)", color="Player", title="Portfolio Return Over Time (%)")
-            fig.for_each_trace(lambda t: t.update(line=dict(dash="dash")) if t.name == "Benchmark" else t.update(line=dict(dash="solid")))
+            fig = px.line(
+                combined,
+                x="Date",
+                y="Return (%)",
+                color="Player",
+                title="Portfolio Return Over Time (%)"
+            )
+            fig.for_each_trace(
+                lambda t: t.update(line=dict(dash="dash")) if t.name == "Benchmark" else t.update(line=dict(dash="solid"))
+            )
             st.plotly_chart(fig, use_container_width=True)
         else:
             st.info("Please select players to display the return chart.")
