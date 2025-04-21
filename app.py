@@ -5,9 +5,9 @@ from data_loader import load_settings, load_roster
 from portfolio import parse_roster
 from finance_utils import fetch_metadata, fetch_prices
 from compute import compute_all_returns
-from visuals import show_leaderboard  # Only importing leaderboard visuals
+from visuals import show_leaderboard
 
-# === App layout ===
+# === Streamlit App Layout ===
 st.set_page_config(layout="wide")
 st.sidebar.button("Refresh Leaderboard")
 st.sidebar.caption(f"Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
@@ -18,7 +18,7 @@ st.markdown("""
     </h1>
 """, unsafe_allow_html=True)
 
-# === Load settings ===
+# === Load Settings ===
 settings = load_settings()
 raw_date = settings.get("start_date", "2025-03-24")
 purchase_date_str = raw_date
@@ -29,24 +29,32 @@ BENCHMARK_TICKER = settings.get("benchmark", "SPY").strip().upper()
 st.markdown(f"<h4>🗓️ Start date: <b>{purchase_date_str}</b></h4>", unsafe_allow_html=True)
 st.caption("Sorted by return — each position equally weighted. Purchase = market open, return = close price basis.")
 
-# === Return basis toggle ===
+# === Return Basis Selection ===
 return_basis = st.radio("Return Basis", ["Latest Close", "Previous Close"], horizontal=True)
 
-# === Load data ===
+# === Load Roster and Metadata ===
 roster = load_roster()
-shares_held, all_tickers, ticker_to_player, ticker_to_direction = parse_roster(roster, TOTAL_CAPITAL)
+position_map = {"LONG": 1, "SHORT": -1, "+1": 1, "-1": -1}
+ticker_replacements = {"BRK.B": "BRK-B", "MOG.A": "MOG-A"}
+
+shares_held, all_tickers, ticker_to_player, ticker_to_direction = parse_roster(
+    roster, TOTAL_CAPITAL, position_map, ticker_replacements
+)
 
 ticker_metadata = fetch_metadata(all_tickers)
 df_prices = fetch_prices(all_tickers.union({BENCHMARK_TICKER}), purchase_date)
 
-# === Compute returns and daily changes ===
+# === Compute Returns & Summary Tables ===
 df_results, player_summary, portfolio_returns, daily_changes, players_with_missing_data = compute_all_returns(
     shares_held, df_prices, ticker_metadata, purchase_date, return_basis, TOTAL_CAPITAL
 )
 
-# === Warning for missing data ===
+# === Handle Missing Data
 if players_with_missing_data:
     st.warning("Some players have missing stock data. Their returns may be inaccurate. Please refresh the leaderboard. Players affected: " + ", ".join(sorted(players_with_missing_data)))
 
-# === Render visuals ===
-show_leaderboard(df_results)
+# === Tabs ===
+tab1, = st.tabs(["📋 Leaderboard"])
+
+with tab1:
+    show_leaderboard(df_results)
