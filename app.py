@@ -5,7 +5,7 @@ from data_loader import load_settings, load_roster
 from portfolio import parse_roster
 from finance_utils import fetch_metadata, fetch_prices
 from compute import compute_all_returns
-from visuals import show_leaderboard, show_performance_chart  # ✅ Both views
+from visuals import show_leaderboard, show_performance_chart
 
 # === Streamlit Layout ===
 st.set_page_config(layout="wide")
@@ -29,8 +29,9 @@ BENCHMARK_TICKER = settings.get("benchmark", "SPY").strip().upper()
 st.markdown(f"<h4>🗓️ Start date: <b>{purchase_date_str}</b></h4>", unsafe_allow_html=True)
 st.caption("Sorted by return — each position equally weighted. Purchase = market open, return = close price basis.")
 
-# === Return Basis Toggle ===
+# === Return Basis & Dividend Toggle ===
 return_basis = st.radio("Return Basis", ["Latest Close", "Previous Close"], horizontal=True)
+dividend_mode = st.radio("Include Dividends?", ["Reinvest (DRIP)", "Price Only"], horizontal=True)
 
 # === Load Roster and Metadata ===
 roster = load_roster()
@@ -47,10 +48,10 @@ df_prices = fetch_prices(tickers_to_fetch, purchase_date)
 
 # === Compute All Portfolio Returns ===
 df_results, player_summary, portfolio_returns, daily_changes, players_with_missing_data = compute_all_returns(
-    shares_held, df_prices, ticker_metadata, purchase_date, return_basis, TOTAL_CAPITAL
+    shares_held, df_prices, ticker_metadata, purchase_date, return_basis, dividend_mode, TOTAL_CAPITAL
 )
 
-# === Missing Data Warning
+# === Handle Missing Data
 if players_with_missing_data:
     st.warning("Some players have missing stock data. Their returns may be inaccurate. Please refresh the leaderboard. Players affected: " + ", ".join(sorted(players_with_missing_data)))
 
