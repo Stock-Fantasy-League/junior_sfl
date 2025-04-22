@@ -1,21 +1,14 @@
 # portfolio.py
 
-def parse_positions(roster_df, total_capital, position_map, ticker_replacements):
+def parse_positions(roster_df, total_capital, position_map):
     """
-    Parses a DataFrame of positions and returns shares held, all tickers,
-    and mappings from ticker to player and direction.
-
-    Args:
-        roster_df (pd.DataFrame): DataFrame with columns [Player, Ticker, Direction, Capital].
-        total_capital (float): Total portfolio capital in dollars.
-        position_map (dict): Mapping from textual directions to numeric (+1/-1).
-        ticker_replacements (dict): Mapping from incorrect tickers to corrected ones.
+    Parses a roster DataFrame to calculate shares held per ticker per player.
 
     Returns:
-        dict: shares_held
-        set: all_tickers
-        dict: ticker_to_player
-        dict: ticker_to_direction
+        shares_held: dict[player][ticker] = number of shares
+        all_tickers: set of all tickers across all players
+        ticker_to_player: dict[ticker] = player
+        ticker_to_direction: dict[ticker] = 1 or -1 depending on long/short
     """
     shares_held = {}
     all_tickers = set()
@@ -23,35 +16,28 @@ def parse_positions(roster_df, total_capital, position_map, ticker_replacements)
     ticker_to_direction = {}
 
     for _, row in roster_df.iterrows():
-        player = row[0]
-        raw_ticker = str(row[1]).strip().upper()
-        pos_raw = row[2]
-        capital = row[3]
+        player = row["Player"]
+        ticker_raw = row["Ticker"]
+        pos_raw = row["Position"]
+        capital = row["Capital"]
 
-        # Standardize ticker
-        ticker = ticker_replacements.get(raw_ticker, raw_ticker)
+        if pd.isna(ticker_raw) or pd.isna(pos_raw) or pd.isna(capital):
+            continue
 
-        # Interpret direction
-        if isinstance(pos_raw, str):
-            direction = position_map.get(pos_raw.strip().upper(), 1)
-        elif isinstance(pos_raw, (int, float)):
-            direction = 1 if pos_raw >= 0 else -1
-        else:
-            direction = 1
+        # Normalize and validate
+        ticker = str(ticker_raw).strip().upper()
+        direction = position_map.get(str(pos_raw).strip().upper(), 1)
+        capital = float(capital)
 
-        # Safely convert capital to float
-        try:
-            capital_value = float(capital)
-        except Exception:
-            capital_value = 0.0
+        shares = (capital * direction) / 1_000_000 * total_capital
 
-        # Convert from millions to dollars and apply direction
-        shares = (capital_value * direction) / 1_000_000 * total_capital
+        # Init if not present
+        if player not in shares_held:
+            shares_held[player] = {}
 
-        # Store values
-        shares_held[ticker] = shares
+        shares_held[player][ticker] = shares
         all_tickers.add(ticker)
         ticker_to_player[ticker] = player
         ticker_to_direction[ticker] = direction
 
-    return shares_held, all_tickers, ticker_to_player, ticker_to_direction, positions
+    return shares_held, all_tickers, ticker_to_player, ticker_to_direction

@@ -2,68 +2,69 @@
 
 import pandas as pd
 
-def compute_all_returns(
-    df_prices,
-    shares_held,
-    all_tickers,
-    ticker_to_player,
-    ticker_to_direction,
-    return_basis,
-    use_adj_close,
-    benchmark_ticker,
-    positions_dict
-):
+def compute_all_returns(df_prices, shares_held, purchase_date, TOTAL_CAPITAL, return_basis, use_adj_close, BENCHMARK_TICKER):
+    """
+    Calculate portfolio and individual player returns based on prices and position data.
+    """
     price_col = "Adj Close" if use_adj_close else "Close"
-    df_results = []
+
+    # Determine entry prices
+    if return_basis == "open":
+        entry_prices = df_prices.loc[purchase_date, "Open"]
+    else:
+        previous_day = df_prices.index[df_prices.index.get_loc(purchase_date) - 1]
+        entry_prices = df_prices.loc[previous_day, price_col]
+
+    current_prices = df_prices[price_col].iloc[-1]
+
+    # Calculate player returns
+    player_summary = {}
     daily_changes = {}
     players_with_missing_data = set()
 
-    for player, player_positions in positions_dict.items():
+    for player, player_positions in shares_held.items():
+        portfolio_value = 0
+        portfolio_initial = 0
         player_data = []
-        for ticker, (capital, direction) in player_positions.items():
-            try:
-                prices = df_prices[price_col][ticker].dropna()
-                prices.index = pd.to_datetime(prices.index).date
 
-                if len(prices) < 2 or prices.empty:
-                    players_with_missing_data.add(player)
-                    continue
-
-                purchase_date = prices.index[0]
-                open_price = df_prices["Open"][ticker].loc[purchase_date]
-                close_idx = -2 if return_basis == "Previous Close" and len(prices) >= 2 else -1
-                close_price = prices.iloc[close_idx]
-
-                shares = capital / open_price
-                ret = ((close_price - open_price) / open_price) * direction
-                value = shares * close_price * direction
-
-                player_data.append({
-                    "Player": player,
-                    "Ticker": ticker,
-                    "Return": round(ret * 100, 2),
-                    "Value ($)": round(value, 2),
-                    "Purchase Price": round(open_price, 2),
-                    "Current Price": round(close_price, 2)
-                })
-
-                daily_change = prices.pct_change().fillna(0) * shares * direction
-                if player not in daily_changes:
-                    daily_changes[player] = daily_change
-                else:
-                    daily_changes[player] += daily_change
-
-            except Exception as e:
+        for ticker, shares in player_positions.items():
+            if ticker not in df_prices.columns.get_level_values(0):
                 players_with_missing_data.add(player)
-                print(f"⚠️ {player} | {ticker}: {e}")
                 continue
 
-        df_results.extend(player_data)
+            initial_price = entry_prices[ticker]
+            current_price = current_prices[ticker]
 
-    df_results = pd.DataFrame(df_results)
-    player_summary = df_results.groupby("Player").agg(
-        Return_Percent=("Return", "mean"),
-        Total_Value=("Value ($)", "sum")
-    ).reset_index().sort_values("Return_Percent", ascending=False)
+            value = shares * current_price
+            invested = shares * initial_price
 
-    return df_results, player_summary, daily_changes, players_with_missing_data
+            portfolio_value += value
+            portfolio_initial += invested
+
+            if ticker not in df_prices.columns:
+                continue
+
+            series = df_prices[ticker][price_col] * shares
+            player_data.append(series)
+
+        if not player_data:
+            players_with_missing_data.add(player)
+            continue
+
+        player_df = pd.concat(player_data, axis=1).sum(axis=1)
+        daily_return = player_df.pct_change().fillna(0)
+        daily_changes[player] = daily_return
+        total_return = (portfolio_value - portfolio_initial) / portfolio_initial if portfolio_initial != 0 else 0
+
+        player_summary[player] = {
+            "Invested": round(portfolio_initial, 2),
+            "Final Value": round(portfolio_value, 2),
+            "Return": round(total_return * 100, 2)
+        }
+
+    # Benchmark
+    benchmark_returns = df_prices[BENCHMARK_TICKER][price_col].pct_change().fillna(0)
+
+    df_results = pd.DataFrame(player_summary).T.sort_values(by="Return", ascending=False)
+
+    return df_results, player_summary, benchmark_returns, daily_changes, players_with_missing_data
